@@ -20,10 +20,12 @@ class TreeNode(object):
         total_samples = 'total samples: ' + str(self.data['total_samples']) + '\n'
         class_samples = 'class samples: ' + str(self.data['each_class_samples']) + '\n'
         gini = 'Gini: ' + str(self.data['data_gini_coef']) + '\n'
+        loss = 'J_loss: ' + str(self.data['loss']) + '\n'
         return_string += t
         return_string += class_
         return_string += total_samples
         return_string += class_samples
+        return_string += loss
         return_string += gini
         return return_string
 
@@ -38,38 +40,47 @@ class DecisionTreeClassifier:
     implements a decision tree classifier
     """
     def __init__(self, max_depth = float('inf')):
+        #overall parameters
+        self.rec_flag = True
         #Hyper parameters
         self.max_depth = max_depth
-        #Fitting parameters
-        self.best_class = None
-        self.best_t = None
-        self.data = dict()
-        self.best_loss = float('inf')
         #The BinaryTree
         self.BinaryTree = TreeNode()
 
-    def fit(self, X_data:ndarray, y_data:ndarray, node = None):
+    def fit(self, X_data:ndarray, y_data:ndarray, node = None, best_class = None, best_t = None, best_loss = float('inf')):
         """
         Fits the Decision Tree
         X has shape of N x M where M is number of features; N is number of instances 
         """
-        #defining self parameters during training
-        self.unique_classes = np.unique(y_data)
-        #parameters for further training
+        #saving number of classes
+        if self.rec_flag:
+            self.classes = np.unique(y_data).tolist()
+        #parameters for training
+        data = dict()
         flag_added = False
         number_of_classes = X_data.shape[1]
         number_of_instances = X_data.shape[0]
         #Training algorithm
         if number_of_instances == 1:
-            return self
+            _, data_each_class_sample, _= self.calc_gini(y_data)
+            data = {
+                't': 'None',
+                'class': 'None',
+                'total_samples': 1,
+                'each_class_samples': data_each_class_sample,
+                'data_gini_coef': 0.0,
+                'loss': 0.0
+                }
+            main_node = self.BinaryTree if node == None else node
+            main_node.data = data
         else:
             #main learning loop
             for feature_col in range(number_of_classes):
                 for instance_row in range(number_of_instances):
                     #getting the t devider and masking for <= and > 
                     t_col = X_data[instance_row,feature_col]
-                    t_mask = X_data[X_data[:,feature_col]] <= t_col
-                    not_t_mask = X_data[X_data[:,feature_col]] > t_col
+                    t_mask = X_data[:,feature_col] <= t_col
+                    not_t_mask = X_data[:,feature_col] > t_col
                     y_left = y_data[t_mask,:]
                     y_right = y_data[not_t_mask,:]
                     #getting the gini losses for both sides
@@ -77,30 +88,33 @@ class DecisionTreeClassifier:
                     total_samples_right, _, gini_coef_right = self.calc_gini(y_right)
                     total_instances = total_samples_right + total_samples_left
                     J_loss = total_samples_left/total_instances*gini_coef_left + total_samples_right/total_instances*gini_coef_right
-                    if J_loss < self.best_loss:
+                    if J_loss < best_loss and 0 not in [total_samples_left, total_samples_right]:
                         #checking the necessary parameters
-                        self.best_loss = J_loss
-                        self.best_class = feature_col
-                        self.best_t = t_col
+                        best_loss = J_loss
+                        best_class = feature_col
+                        best_t = t_col
                         flag_added = True
             #adding the necessary information to the tree
             data_total_samples, data_each_class_sample, data_gini_coef = self.calc_gini(y_data)
-            self.data['t'] = self.best_t if flag_added else None
-            self.data['class'] = self.best_class if flag_added else None
-            self.data['total_samples'] = data_total_samples
-            self.data['each_class_samples'] = data_each_class_sample
-            self.data['data_gini_coef'] = data_gini_coef
+            data['t'] = best_t if flag_added else 'None'
+            data['class'] = best_class if flag_added else 'None'
+            data['total_samples'] = data_total_samples
+            data['each_class_samples'] = data_each_class_sample
+            data['data_gini_coef'] = data_gini_coef
+            data['loss'] = best_loss
             #saving data to main node
             main_node = self.BinaryTree if node == None else node
-            main_node.data = self.data
+            main_node.data = data
+            # print(main_node)
             if flag_added == True:
+                #add recursion count
+                self.rec_flag = False
                 #if we found a better impurity we add the left and right branches
-                node_left = TreeNode()
-                node_right = TreeNode()
+                node_left, node_right = TreeNode(), TreeNode()
                 main_node.left = node_left
                 main_node.right = node_right
-                self.fit(X_data[X_data[:,self.best_class] <= self.best_t,:], y_data[X_data[:,self.best_class] <= self.best_t,:], node = node_left)
-                self.fit(X_data[X_data[:,self.best_class] > self.best_t,:], y_data[X_data[:,self.best_class] > self.best_t,:], node = node_right)
+                self.fit(X_data[X_data[:,best_class]<=best_t,:], y_data[X_data[:,best_class]<=best_t,:], node = node_left, best_loss = best_loss)
+                self.fit(X_data[X_data[:,best_class]>best_t,:], y_data[X_data[:,best_class]>best_t,:], node = node_right, best_loss = best_loss)
 
     def calc_gini(self, y_vector:ndarray):
         """
@@ -110,12 +124,20 @@ class DecisionTreeClassifier:
         2. Number of samples of each class
         3. Gini for that vector of targets
         """
+        cls_dict = dict(zip(self.classes,[0 for _ in range(len(self.classes))]))
         total_samples = y_vector.shape[0]
-        each_class_sample = np.unique(y_vector, return_counts = True)[1]
-        gini_coef = 1 - ((each_class_sample/each_class_sample.sum())**2).sum()
-        return total_samples, each_class_sample, gini_coef #may be here we want to do some tests
+        each_class_sample = np.unique(y_vector, return_counts = True)
+        #updating count values in main dict
+        for cls, count in zip(each_class_sample[0],each_class_sample[1]):
+            cls_dict[cls] += count.item()
+        #getting the stats for all classes
+        samples_for_all = list(cls_dict.values())
+        gini_coef = 1 - ((each_class_sample[1]/sum(samples_for_all))**2).sum()
+        return total_samples, samples_for_all, gini_coef #may be here we want to do some tests
     
 
 
-    def predict(self, x_instance):
-        pass
+    def predict(self, X):
+        """
+        X is a matrix 
+        """
