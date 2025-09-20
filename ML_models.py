@@ -106,7 +106,7 @@ class DecisionTreeClassifier:
             main_node = self.BinaryTree if node == None else node
             main_node.data = data
             # print(main_node)
-            if flag_added == True:
+            if flag_added == True and data_gini_coef != 0.0:
                 #add recursion count
                 self.rec_flag = False
                 #if we found a better impurity we add the left and right branches
@@ -131,13 +131,33 @@ class DecisionTreeClassifier:
         for cls, count in zip(each_class_sample[0],each_class_sample[1]):
             cls_dict[cls] += count.item()
         #getting the stats for all classes
-        samples_for_all = list(cls_dict.values())
-        gini_coef = 1 - ((each_class_sample[1]/sum(samples_for_all))**2).sum()
+        samples_for_all = np.array(list(cls_dict.values()))
+        gini_coef = 1 - ((each_class_sample[1]/samples_for_all.sum())**2).sum()
         return total_samples, samples_for_all, gini_coef #may be here we want to do some tests
     
 
 
     def predict(self, X):
         """
-        X is a matrix 
+        Input: X is a matrix of shape N_samples x M_features
+        Output: Y of shape N_samples x 1 of predicted features
         """
+        #preparing parameters
+        N_instances = X.shape[0]
+        y_prediction = np.zeros((N_instances,1))
+        for row in range(N_instances):
+            initial_node = self.BinaryTree
+            while initial_node.right != None:
+                t = initial_node.data['t']
+                cls_col = initial_node.data['class']
+                if X[row,cls_col] <= t:
+                    initial_node = initial_node.left
+                elif X[row,cls_col] > t:
+                    initial_node = initial_node.right
+            cls_indx_pred = initial_node.data['each_class_samples'].argmax(axis = 0).item()
+            y_pred = self.classes[cls_indx_pred]
+            y_prediction[row,0] = y_pred
+        return y_prediction
+
+
+        
