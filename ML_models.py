@@ -1,10 +1,9 @@
 #imports 
 import numpy as np
 from tqdm import tqdm
-from numpy import ndarray
 
 
-#data node structure
+#data node structure for tree regressor
 class TreeNode(object):
     def __init__(self,data = None):
         self.data = data
@@ -37,7 +36,7 @@ class TreeNode(object):
 #models
 class DecisionTreeClassifier:
     """
-    implements a decision tree classifier
+    Implements a DecisionTreeClassifier
     """
     def __init__(self, max_depth = float('inf')):
         #overall parameters
@@ -47,7 +46,7 @@ class DecisionTreeClassifier:
         #The BinaryTree
         self.BinaryTree = TreeNode()
 
-    def fit(self, X_data:ndarray, y_data:ndarray, node = None, best_class = None, best_t = None, best_loss = float('inf')):
+    def fit(self, X_data:np.ndarray, y_data:np.ndarray, node = None, best_class = None, best_t = None, best_loss = float('inf')):
         """
         Fits the Decision Tree
         X has shape of N x M where M is number of features; N is number of instances 
@@ -116,7 +115,7 @@ class DecisionTreeClassifier:
                 self.fit(X_data[X_data[:,best_class]<=best_t,:], y_data[X_data[:,best_class]<=best_t,:], node = node_left, best_loss = best_loss)
                 self.fit(X_data[X_data[:,best_class]>best_t,:], y_data[X_data[:,best_class]>best_t,:], node = node_right, best_loss = best_loss)
 
-    def calc_gini(self, y_vector:ndarray):
+    def calc_gini(self, y_vector:np.ndarray):
         """
         y_vector should be a column vector
         For a given column vector returns 
