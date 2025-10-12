@@ -1,4 +1,7 @@
 #imports 
+import typing
+from collections import abc
+
 import numpy as np
 from tqdm import tqdm
 
@@ -12,7 +15,7 @@ from tqdm import tqdm
 
 #data node structure for tree regressor
 class TreeNode(object):
-    def __init__(self,data = None):
+    def __init__(self, data:abc.Mapping[str,typing.Any]|None = None):
         self.data = data
         self.left = None
         self.right = None
@@ -36,28 +39,72 @@ class TreeNode(object):
         return return_string
     
 
-class TreeLoss(object):
-    pass
+class GiniCriterion(object):
+    """Implements Gini criterion"""
+    def __init__(self):
+        #dict for counting classes
+        self.dict_cls_count = dict()
+
+    def __call__(self, target:np.ndarray) -> float:
+        """
+        parameters
+        ----------
+        target: np.ndarray of shape Nx1 containing integers (i.e. integer column vector representing classes)
+
+        returns
+        -------
+        Gini criterion for target dataset
+        """
+        #can we implement that logic with decorator?
+        self.update_cls_dict(target)
+        #getting dictionary values that represent counts for each class
+        cls_counts = self.dict_cls_count.values()
+        #O(N) for summing
+        total_count_sum = sum(cls_counts)
+        #O(N) for calculating gini
+        gini_crit = 1
+        for one_count in cls_counts:
+            gini_crit -= (one_count/total_count_sum)**2
+        return gini_crit
+                
 
 
-class BranchSplitCriterion(object):
-    pass
+    def update_cls_dict(self, target:np.ndarray) -> None:
+        """
+        parameters
+        ----------
+        target: np.ndarray of shape Nx1 containing integers (i.e. integer column vector representing classes)
 
+        returns
+        -------
+        None
+
+        description
+        ------------
+        updates counts of classes in object dictionary
+        """
+        #counting classes (O(N) complexity for N samples in target)
+        for one_cls in target:
+            try:
+                self.dict_cls_count[one_cls.item()] += 1
+            except:
+                self.dict_cls_count[one_cls.item()] = 1
 
 
 
 
 
 #models
-class DecisionTreeClassifier:
+class DecisionTreeClassifier(object):
     """
     Implements a DecisionTreeClassifier
     """
-    def __init__(self, max_depth = float('inf')):
+    def __init__(self, criterion: abc.Callable[[object], float], max_depth = None):
         #overall parameters
-        self.rec_flag = True
+        self.depth_count = False
         #Hyper parameters
         self.max_depth = max_depth
+        self.criterion = criterion
         #The BinaryTree
         self.BinaryTree = TreeNode()
 
