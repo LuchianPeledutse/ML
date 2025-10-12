@@ -3,6 +3,13 @@ import numpy as np
 from tqdm import tqdm
 
 
+#regularizing parameters we want to implement
+#max_depth
+#min_samples
+#min_leafs
+#min % branch split
+
+
 #data node structure for tree regressor
 class TreeNode(object):
     def __init__(self,data = None):
@@ -27,6 +34,14 @@ class TreeNode(object):
         return_string += loss
         return_string += gini
         return return_string
+    
+
+class TreeLoss(object):
+    pass
+
+
+class BranchSplitCriterion(object):
+    pass
 
 
 
@@ -46,7 +61,7 @@ class DecisionTreeClassifier:
         #The BinaryTree
         self.BinaryTree = TreeNode()
 
-    def fit(self, X_data:np.ndarray, y_data:np.ndarray, node = None, best_class = None, best_t = None, best_loss = float('inf')):
+    def fit(self, X_data:np.ndarray, y_data:np.ndarray, node = None, best_class = None, best_t = None):
         """
         Fits the Decision Tree
         X has shape of N x M where M is number of features; N is number of instances 
@@ -74,12 +89,15 @@ class DecisionTreeClassifier:
             main_node.data = data
         else:
             #main learning loop
+            #fixating the branch splitting function
+            best_loss = float('inf')
             for feature_col in range(number_of_classes):
-                for instance_row in range(number_of_instances):
-                    #getting the t devider and masking for <= and > 
-                    t_col = X_data[instance_row,feature_col]
-                    t_mask = X_data[:,feature_col] <= t_col
-                    not_t_mask = X_data[:,feature_col] > t_col
+                x_feature_col_data = np.sort(X_data[:,feature_col]).reshape(-1,1)
+                for instance_row in range(number_of_instances-1):
+                    #getting the t devider and masking for <= and > boolean predicates 
+                    t_crit = (x_feature_col_data[instance_row,:] + x_feature_col_data[instance_row+1,:])/2 
+                    t_mask = x_feature_col_data.reshape(-1) <= t_crit.item()
+                    not_t_mask = x_feature_col_data.reshape(-1) > t_crit.item()
                     y_left = y_data[t_mask,:]
                     y_right = y_data[not_t_mask,:]
                     #getting the gini losses for both sides
@@ -91,7 +109,7 @@ class DecisionTreeClassifier:
                         #checking the necessary parameters
                         best_loss = J_loss
                         best_class = feature_col
-                        best_t = t_col
+                        best_t = t_crit
                         flag_added = True
             #adding the necessary information to the tree
             data_total_samples, data_each_class_sample, data_gini_coef = self.calc_gini(y_data)
@@ -112,13 +130,17 @@ class DecisionTreeClassifier:
                 node_left, node_right = TreeNode(), TreeNode()
                 main_node.left = node_left
                 main_node.right = node_right
-                self.fit(X_data[X_data[:,best_class]<=best_t,:], y_data[X_data[:,best_class]<=best_t,:], node = node_left, best_loss = best_loss)
-                self.fit(X_data[X_data[:,best_class]>best_t,:], y_data[X_data[:,best_class]>best_t,:], node = node_right, best_loss = best_loss)
+                self.fit(X_data[X_data[:,best_class]<=best_t,:], y_data[X_data[:,best_class]<=best_t,:], node = node_left)
+                self.fit(X_data[X_data[:,best_class]>best_t,:], y_data[X_data[:,best_class]>best_t,:], node = node_right)
 
     def calc_gini(self, y_vector:np.ndarray):
         """
-        y_vector should be a column vector
-        For a given column vector returns 
+        parameters
+        -----------
+        y_vector: np.ndarray of shape (N,1) (i.e. vector column)
+
+        returns
+        --------
         1. Total number of samples
         2. Number of samples of each class
         3. Gini for that vector of targets
