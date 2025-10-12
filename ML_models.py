@@ -6,13 +6,6 @@ import numpy as np
 from tqdm import tqdm
 
 
-#regularizing parameters we want to implement
-#max_depth
-#min_samples
-#min_leafs
-#min % branch split
-
-
 #data node structure for tree regressor
 class TreeNode(object):
     def __init__(self, data:abc.Mapping[str,typing.Any]|None = None):
@@ -25,11 +18,11 @@ class TreeNode(object):
         double_space = '\n\n'
         #writing parameters
         t ='t: ' + str(self.data['t']) + '\n'
-        class_ = 'class: ' + str(self.data['class']) + '\n'
+        class_ = 'split_feature: ' + str(self.data['split_feature']) + '\n'
         total_samples = 'total samples: ' + str(self.data['total_samples']) + '\n'
         class_samples = 'class samples: ' + str(self.data['each_class_samples']) + '\n'
-        gini = 'Gini: ' + str(self.data['data_gini_coef']) + '\n'
-        loss = 'J_loss: ' + str(self.data['loss']) + '\n'
+        gini = 'information_criterion: ' + str(self.data['information_criterion']) + '\n'
+        loss = 'split_criterion: ' + str(self.data['split_criterion']) + '\n'
         return_string += t
         return_string += class_
         return_string += total_samples
@@ -83,6 +76,8 @@ class GiniCriterion(object):
         ------------
         updates counts of classes in object dictionary
         """
+        #clear dict from past calculations 
+        self.dict_cls_count.clear()
         #counting classes (O(N) complexity for N samples in target)
         for one_cls in target:
             try:
@@ -99,133 +94,119 @@ class DecisionTreeClassifier(object):
     """
     Implements a DecisionTreeClassifier
     """
-    def __init__(self, criterion: abc.Callable[[object], float], max_depth = None):
-        #overall parameters
+    def __init__(self, criterion: abc.Callable[[np.ndarray], float] = GiniCriterion(), max_depth:int = None):
+        #Training parameters (i.e. parameters needed for training algorithm)
         self.depth_count = False
-        #Hyper parameters
+        self.left_depth_count = False
+        self.right_depth_count = False
+        #Hyper parameters of model
         self.max_depth = max_depth
+        self.min_samples = None
+        self.min_leafs = None
         self.criterion = criterion
         #The BinaryTree
         self.BinaryTree = TreeNode()
 
-    def fit(self, X_data:np.ndarray, y_data:np.ndarray, node = None, best_class = None, best_t = None):
+    def fit(self, X_data:np.ndarray, y_data:np.ndarray, node:TreeNode = None, best_feature_col:int = None, best_t:float = None):
         """
-        Fits the Decision Tree
-        X has shape of N x M where M is number of features; N is number of instances 
+        parameters
+        -----------
+        X_data: np.ndarray | shape NxM where N number of samples, M number of features
+        y_data: np.ndarray | shape Nx1 is target array of classes
+        node: TreeNode | current node if not None else root (self.BinaryTree) of tree
+        best_feature_col: int | index of column (feature) that splits the data optimally
+        best_t: float | the optimal value for boolean split on best_feature_col
         """
-        #saving number of classes
-        if self.rec_flag:
-            self.classes = np.unique(y_data).tolist()
-        #parameters for training
+        #Training variables and statistics
         data = dict()
         flag_added = False
-        number_of_classes = X_data.shape[1]
+        best_split_criterion = float('inf')
+        number_of_features = X_data.shape[1]
         number_of_instances = X_data.shape[0]
         #Training algorithm
         if number_of_instances == 1:
-            _, data_each_class_sample, _= self.calc_gini(y_data)
+            information_criterion = self.criterion(y_data)
             data = {
                 't': 'None',
-                'class': 'None',
+                'feature_column': 'None',
                 'total_samples': 1,
-                'each_class_samples': data_each_class_sample,
-                'data_gini_coef': 0.0,
-                'loss': 0.0
+                'each_class_samples': list(self.criterion.dict_cls_count.items()),
+                'information_criterion': 0.0,
+                'split_criterion': 0.0
                 }
             main_node = self.BinaryTree if node == None else node
             main_node.data = data
         else:
-            #main learning loop
-            #fixating the branch splitting function
-            best_loss = float('inf')
-            for feature_col in range(number_of_classes):
-                x_feature_col_data = np.sort(X_data[:,feature_col]).reshape(-1,1)
+            #Main learning loop
+            for feature_col in range(number_of_features):
                 for instance_row in range(number_of_instances-1):
-                    #getting the t devider and masking for <= and > boolean predicates 
-                    t_crit = (x_feature_col_data[instance_row,:] + x_feature_col_data[instance_row+1,:])/2 
-                    t_mask = x_feature_col_data.reshape(-1) <= t_crit.item()
-                    not_t_mask = x_feature_col_data.reshape(-1) > t_crit.item()
+                    #getting splitting value t and its corresponding masks
+                    t_value = (X_data[instance_row,feature_col].item() + X_data[instance_row+1,feature_col].item())/2 
+                    t_mask = X_data[:,feature_col] <= t_value
+                    not_t_mask = X_data[:,feature_col] > t_value
+                    #getting right and left corresponding target data
                     y_left = y_data[t_mask,:]
                     y_right = y_data[not_t_mask,:]
-                    #getting the gini losses for both sides
-                    total_samples_left, _, gini_coef_left = self.calc_gini(y_left)
-                    total_samples_right, _, gini_coef_right = self.calc_gini(y_right)
-                    total_instances = total_samples_right + total_samples_left
-                    J_loss = total_samples_left/total_instances*gini_coef_left + total_samples_right/total_instances*gini_coef_right
-                    if J_loss < best_loss and 0 not in [total_samples_left, total_samples_right]:
-                        #checking the necessary parameters
-                        best_loss = J_loss
-                        best_class = feature_col
-                        best_t = t_crit
+                    #getting criterion of branch splitting for both sides (O(N) complexity)
+                    criterion_left = self.criterion(y_left)
+                    criterion_right = self.criterion(y_right)
+                    #calculating split criterion (intermidiate lengths calculations have overall complexity O(N))
+                    split_criterion = len(y_left)/number_of_instances*criterion_left + len(y_right)/number_of_instances*criterion_right
+                    if split_criterion < best_split_criterion:
+                        #updating training variables
+                        best_split_criterion = split_criterion
+                        best_feature_col = feature_col
+                        best_t = t_value
                         flag_added = True
-            #adding the necessary information to the tree
-            data_total_samples, data_each_class_sample, data_gini_coef = self.calc_gini(y_data)
-            data['t'] = best_t if flag_added else 'None'
-            data['class'] = best_class if flag_added else 'None'
-            data['total_samples'] = data_total_samples
-            data['each_class_samples'] = data_each_class_sample
-            data['data_gini_coef'] = data_gini_coef
-            data['loss'] = best_loss
+            #adding information to current node
+            information_criterion = self.criterion(y_data)
+            #mask for adding splitting information
+            splitting_node = (flag_added and information_criterion != 0.0)
+            data['t'] = best_t if splitting_node else 'None'
+            data['split_feature'] = best_feature_col if splitting_node else 'None'
+            data['total_samples'] = sum(self.criterion.dict_cls_count.values())
+            data['each_class_samples'] = list(self.criterion.dict_cls_count.items())
+            data['information_criterion'] = information_criterion
+            data['split_criterion'] = best_split_criterion
             #saving data to main node
             main_node = self.BinaryTree if node == None else node
             main_node.data = data
-            # print(main_node)
-            if flag_added == True and data_gini_coef != 0.0:
-                #add recursion count
-                self.rec_flag = False
-                #if we found a better impurity we add the left and right branches
+            #if we have a split add recursion, given that data is not pure (i.e. more than one class)
+            if splitting_node:
                 node_left, node_right = TreeNode(), TreeNode()
                 main_node.left = node_left
                 main_node.right = node_right
-                self.fit(X_data[X_data[:,best_class]<=best_t,:], y_data[X_data[:,best_class]<=best_t,:], node = node_left)
-                self.fit(X_data[X_data[:,best_class]>best_t,:], y_data[X_data[:,best_class]>best_t,:], node = node_right)
+                self.fit(X_data[X_data[:,best_feature_col]<=best_t,:], y_data[X_data[:,best_feature_col]<=best_t,:], node = node_left)
+                self.fit(X_data[X_data[:,best_feature_col]>best_t,:], y_data[X_data[:,best_feature_col]>best_t,:], node = node_right)
 
-    def calc_gini(self, y_vector:np.ndarray):
+    def predict(self, X:np.ndarray) -> np.ndarray:
         """
         parameters
         -----------
-        y_vector: np.ndarray of shape (N,1) (i.e. vector column)
+        X: np.ndarray | matrix of shape N_instances x M_features
 
         returns
         --------
-        1. Total number of samples
-        2. Number of samples of each class
-        3. Gini for that vector of targets
+        Y: np.ndarray | vector column of shape N_instances x 1 (i.e. prediction for each object in X)
         """
-        cls_dict = dict(zip(self.classes,[0 for _ in range(len(self.classes))]))
-        total_samples = y_vector.shape[0]
-        each_class_sample = np.unique(y_vector, return_counts = True)
-        #updating count values in main dict
-        for cls, count in zip(each_class_sample[0],each_class_sample[1]):
-            cls_dict[cls] += count.item()
-        #getting the stats for all classes
-        samples_for_all = np.array(list(cls_dict.values()))
-        gini_coef = 1 - ((each_class_sample[1]/samples_for_all.sum())**2).sum()
-        return total_samples, samples_for_all, gini_coef #may be here we want to do some tests
-    
-
-
-    def predict(self, X):
-        """
-        Input: X is a matrix of shape N_samples x M_features
-        Output: Y of shape N_samples x 1 of predicted features
-        """
-        #preparing parameters
+        #statistics
         N_instances = X.shape[0]
-        y_prediction = np.zeros((N_instances,1))
+        target_prediction = np.zeros((N_instances,1))
         for row in range(N_instances):
             initial_node = self.BinaryTree
+            #while the node is splitted
             while initial_node.right != None:
                 t = initial_node.data['t']
-                cls_col = initial_node.data['class']
-                if X[row,cls_col] <= t:
+                feature_col = initial_node.data['split_feature']
+                #object can go either to left or right side depending on boolean value of predicate
+                if X[row,feature_col] <= t:
                     initial_node = initial_node.left
-                elif X[row,cls_col] > t:
+                elif X[row,feature_col] > t:
                     initial_node = initial_node.right
-            cls_indx_pred = initial_node.data['each_class_samples'].argmax(axis = 0).item()
-            y_pred = self.classes[cls_indx_pred]
-            y_prediction[row,0] = y_pred
-        return y_prediction
+            #get the most frequent class as prediction
+            class_prediction = max(initial_node.data['each_class_samples'], key = lambda x: x[1])[0]
+            target_prediction[row,0] = class_prediction
+        return target_prediction
 
 
         
