@@ -30,7 +30,7 @@ class MSE:
         mse = (summed_squared_error/N).item()
         return mse
     
-    def grad(self, w: np.ndarray, X: np.ndarray, y: np.ndarray, alpha: float = 0.05) -> np.ndarray:
+    def grad(self, w: np.ndarray, X: np.ndarray, y: np.ndarray) -> np.ndarray:
         """
         Description
         -----------
@@ -46,19 +46,15 @@ class MSE:
         
         y: np.ndarray
             Target vector of shape Bx1
-        
-        alpha: float
-            Learning rate with which to update the vector
 
         Returns
         -------
-        w: np.ndarray
-            Updated weights
+        mse_gradient: np.ndarray
+            Gradient w.r.t. weights
         """
         B = len(X)
         mse_gradient = 2/B * X.T@(X@w-y)
-        w_star -=  alpha*mse_gradient
-        return w_star
+        return mse_gradient
 
 '--------------------------------------------------------------------------------'
     
