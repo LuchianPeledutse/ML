@@ -55,13 +55,5 @@ class MSE:
         B = len(X)
         mse_gradient = 2/B * X.T@(X@w-y)
         return mse_gradient
-
-'--------------------------------------------------------------------------------'
     
 
-
-
-
-if __name__ == "__main__":
-    the_num = 3
-    print(1)
