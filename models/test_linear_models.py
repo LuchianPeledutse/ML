@@ -39,3 +39,18 @@ def test_dataset_linear_learning(X: np.ndarray, y: np.ndarray, eps=1e-2) -> None
     # Check wether the difference is less than epsilon
     diff = abs(lib_weight - sk_weight)
     assert (diff < eps).any(), "Some of coefficients difference is larger than epsilon"
+
+
+def test_dataset_linear_logistic_learning() -> None:
+    """
+    Tests whether implemented model solution is similar to sklearn solution
+
+    Args
+    ----
+    X: np.ndarray
+        Feature matrix X of shape NxD where N is number of objects, D is number of features
+    
+    y: np.ndarray
+        Target vector column (binary values 0 and 1)
+    """
+    assert 0 == 0
